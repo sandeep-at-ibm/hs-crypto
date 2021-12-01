@@ -215,7 +215,7 @@ To retrieve the import token contents:
 
     The `payload` value represents the public key that is associated with the import token. This value is base64 encoded. For extra security, {{site.data.keyword.hscrypto}} provides a `nonce` value that is used to verify the originality of a request to the service. You'll need to encrypt and provide this value when you import your encryption key.
 
-3. Decode and save the public key to a file called `PublicKey.pem`.
+3. Decode and save the public key to a file called `PublicKey.pem`. Also extract values into variables to be used later
 
     ```sh
     jq -r '.payload' getImportTokenResponse.json | openssl enc -base64 -A -d -out PublicKey.pem
@@ -223,6 +223,7 @@ To retrieve the import token contents:
     {: pre}
 
     ```sh
+    HPCS_PUBKEY="$(jq -r '.payload' getImportTokenResponse.json)"
     NONCE="$(jq -r '.nonce' getImportTokenResponse.json)"
     ```
     {: pre}
@@ -272,31 +273,25 @@ To encrypt the nonce value:
     You can skip this step if you use your own key in this tutorial.
     {: tip}
 
-2. Gather the nonce value that you retrieved in [step 2](#tutorial-import-retrieve-token).
-
-    ```sh
-    NONCE=$(jq -r '.nonce' getImportTokenResponse.json)
-    ```
-    {: pre}
-
-3. If you are going to use the API to perform the subsequent steps, do the following:
+2. If you are going to use the API to perform the subsequent steps, do the following:
 
     You don't need to perform this step if you are going to use the {{site.data.keyword.keymanagementservicelong_notm}} CLI.
     {: tip}
 
-    1. [Download the sample `kms-encrypt-nonce` binary](https://github.com/IBM-Cloud/kms-samples/releases/tag/v1.1){: external} that is compatible with your operating system. Extract the file, and then move the binary to the `hs-crypto-test` directory.
+    . [Download the sample `kms-encrypt-nonce` binary](https://github.com/IBM-Cloud/kms-samples/releases/tag/v1.1){: external} that is compatible with your operating system. Extract the file, and then move the binary to the `hs-crypto-test` directory.
 
         The binary contains a script that you can use to run AES-CBC encryption on the nonce value by using the key that you generated in [step 2](#tutorial-import-retrieve-token). To learn more about the script, [check out the source file on GitHub](https://github.com/IBM-Cloud/kms-samples/blob/master/secure-import/encrypt.go){: external}.
         {: note}
 
-    2. If you are using Linux&reg;, mark the file as executable by running the following  `chmod` command. You can skip this step if you are using Windows.
+    . If you are using Linux&reg;, mark the file as executable by running the following  `chmod` command. You can skip this step if you are using Windows.
 
         ```sh
         chmod +x ./kms-encrypt-nonce
         ```
         {: pre}
-
-4. Run the script to encrypt the nonce value with the encryption key that you generated in [step 2](#tutorial-import-retrieve-token). Then, save the response to a file called `EncryptedValues.json`.
+    . Run the script to encrypt the nonce value with the encryption key that you generated in [step 2](#tutorial-import-retrieve-token).
+    
+3. Save the encrypted nonce to a file called `EncryptedValues.json`.
 
     - **Use the API**:
 
@@ -308,7 +303,7 @@ To encrypt the nonce value:
     - **Use the {{site.data.keyword.keymanagementservicelong_notm}} CLI**:
 
       ```
-      ibmcloud kp import-token nonce-encrypt --key "$KEY_MATERIAL" --nonce "$NONCE" --cbc | awk 'END{print "{\"encryptedNonce\": \""$1"\", \"iv\": \""$2"\"}";}' -o json > EncryptedValues.json
+      ibmcloud kp import-token nonce-encrypt --key "$KEY_MATERIAL" --nonce "$NONCE" --cbc -o json > EncryptedValues.json
       ```
       {: pre}
 
@@ -363,7 +358,8 @@ Next, use the public key that was distributed by {{site.data.keyword.hscrypto}} 
 * Encrypt the generated key with the {{site.data.keyword.keymanagementservicelong_notm}} CLI:
 
     ```
-    ENCRYPTED_KEY=$(ibmcloud kp import-token key-encrypt --key $KEY_MATERIAL --pubkey "$(jq -r '.payload' getImportTokenResponse.json)" --hash SHA1  | awk 'END{print $1}')
+    ibmcloud kp import-token key-encrypt -k "$KEY_MATERIAL" -p "$HPCS_PUBKEY" --hash SHA1 -o json > EncryptedKey.json
+    ENCRYPTED_KEY=$(jq -r '.encryptedKey' EncryptedKey.json)
     ```
     {: pre}
 
@@ -427,7 +423,7 @@ To import the key:
     - **Use the {{site.data.keyword.keymanagementservicelong_notm}} CLI**:
 
       ```
-      ibmcloud kp key create new-imported-key --key-material "${ENCRYPTED_KEY}" --encrypted-nonce "${ENCRYPTED_NONCE}" --iv "${IV}" --sha1 -o json > createRootKeyResponse.json
+      ibmcloud kp key create new-imported-key --key-material "$ENCRYPTED_KEY" --encrypted-nonce "$ENCRYPTED_NONCE" --iv "$IV" --sha1 -o json > createRootKeyResponse.json
       ```
       {: pre}
 
